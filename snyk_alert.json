@@ -1,0 +1,34 @@
+{
+  "webhookEvent": "test",
+  "project": {
+    "name": "my-app",
+    "id": "proj-abc123",
+    "url": "https://app.snyk.io/org/my-org/project/proj-abc123"
+  },
+  "org": {
+    "name": "my-org",
+    "id": "org-abc123"
+  },
+  "newIssues": [
+    {
+      "id": "SNYK-JS-LODASH-590103",
+      "issueData": {
+        "id": "SNYK-JS-LODASH-590103",
+        "title": "Prototype Pollution",
+        "severity": "high",
+        "url": "https://snyk.io/vuln/SNYK-JS-LODASH-590103",
+        "description": "lodash before 4.17.20 is vulnerable to Prototype Pollution via the merge, mergeWith, and defaultsDeep functions. An attacker can supply a payload such as '{\"constructor\": {\"prototype\": {\"admin\": true}}}' to pollute the Object prototype, potentially bypassing security controls or enabling Remote Code Execution when prototype properties are later accessed in a privileged context.",
+        "identifiers": {
+          "CVE": ["CVE-2020-8203"],
+          "CWE": ["CWE-1321"]
+        },
+        "functions": ["_.merge", "_.mergeWith", "_.defaultsDeep", "_.zipObjectDeep"]
+      },
+      "pkgName": "lodash",
+      "pkgVersions": ["4.17.15"],
+      "fixedIn": ["4.17.21"]
+    }
+  ],
+  "updatedIssues": [],
+  "removedIssues": []
+}

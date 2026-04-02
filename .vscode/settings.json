@@ -1,0 +1,5 @@
+{
+    "snyk.advanced.autoSelectOrganization": true,
+    "python.terminal.useEnvFile": true,
+    "python.envFile": "${workspaceFolder}/.env"
+}

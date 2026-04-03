@@ -12,7 +12,7 @@
     "lodash": "4.17.15",
     "axios": "0.21.1",
     "mkdirp": "0.5.5",
-    "semver": "7.3.7"
+    "semver": "7.5.2"
   },
   "devDependencies": {
     "jest": "29.7.0"

@@ -12,6 +12,9 @@ class SnykVulnerability(TypedDict):
     description: str
     cve_ids: List[str]
     affected_functions: List[str]   # e.g. ["_.merge", "_.defaultsDeep"]
+    is_transitive: bool             # True if vuln is in a transitive dep
+    transitive_chain: List[str]     # e.g. ["mkdirp", "minimist"]
+    parent_package: str             # direct dep that brings in the vuln dep
 
 
 class UsageSite(TypedDict):

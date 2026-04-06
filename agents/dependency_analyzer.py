@@ -31,13 +31,30 @@ Given a Snyk vulnerability report, return a JSON object (no prose, no markdown f
   "affected_functions": [<string>],  // function names that are vulnerable, e.g. "_.merge"
   "reasoning": <string>,             // one paragraph explanation
   "risk_level": "critical|high|medium|low",
-  "upgrade_confidence": "high|medium|low"
+  "upgrade_confidence": "high|medium|low",
+  "is_transitive": <bool>,           // true if the vuln is in a transitive dependency
+  "transitive_fix_strategy": <string> // "upgrade_parent" | "override" | "replace" | "none"
 }
 
 Rules:
-- advisory_track = true  when severity is high/critical OR when the vuln involves functions that
-  accept user-controlled data (merge, defaultsDeep, zipObjectDeep, etc.)
-- advisory_track = false when it is a pure patch and no affected call sites need changing.
+- BREAKING CHANGE DETECTION:
+  * If MAJOR version number increases (e.g 0.x→1.x, 2.x→3.x), breaking_changes = true
+  * Common breaking changes: removed APIs, renamed exports, changed function signatures
+  * For axios 0.x → 1.x: CancelToken removed, transformRequest changed, default headers API changed
+  * When breaking_changes = true, advisory_track MUST also be true (code needs updating)
+
+- ADVISORY TRACK:
+  * advisory_track = true  when severity is high/critical OR when breaking_changes OR when
+    the vuln involves functions that accept user-controlled data
+  * advisory_track = false when it is a pure patch, no breaking changes, and no affected call sites need changing
+
+- TRANSITIVE DEPENDENCIES:
+  * If is_transitive = true, identify whether the parent package can be upgraded
+  * transitive_fix_strategy options:
+    - "upgrade_parent" = upgrade the parent package to a version that uses fixed transitive
+    - "override" = add npm "overrides" field in package.json to pin the transitive dep
+    - "replace" = replace the parent package with a modern alternative
+    - "none" = direct dependency, not applicable
 """
 
 
@@ -81,12 +98,26 @@ CVEs          : {", ".join(vuln["cve_ids"]) or "N/A"}
 Title         : {vuln["title"]}
 Description   : {vuln["description"]}
 Known affected functions (Snyk): {", ".join(vuln["affected_functions"]) or "none listed"}
+Is transitive : {vuln.get("is_transitive", False)}
+Transitive chain: {" → ".join(vuln.get("transitive_chain", [])) or "N/A (direct dependency)"}
+Parent package: {vuln.get("parent_package", "N/A")}
+
+IMPORTANT version analysis:
+- Compare MAJOR versions: {vuln["affected_version"].split(".")[0] if "." in vuln["affected_version"] else "?"} vs {vuln["fixed_version"].split(".")[0] if "." in vuln["fixed_version"] else "?"}
+- If MAJOR version changes (e.g. 0.x → 1.x, 2.x → 3.x), breaking_changes MUST be true.
+- If MAJOR version stays the same (patch/minor bump), breaking_changes should be false.
+
+For transitive dependencies, consider:
+- Can the PARENT package be upgraded to a version that uses the fixed transitive dep?
+- Can npm overrides / resolutions be used to force the transitive dep version?
+- Is the transitive dep directly imported in user code, or only used internally by the parent?
 
 Questions to answer:
 1. Is upgrading from {vuln["affected_version"]} to {vuln["fixed_version"]} semver-compatible?
 2. Are there known breaking API changes in the fixed version?
 3. Is a full codebase audit required (advisory_track)?
 4. Which specific functions/methods are vulnerable?
+5. If transitive: what is the recommended resolution strategy?
 """
 
     try:

@@ -27,6 +27,64 @@
       "pkgName": "lodash",
       "pkgVersions": ["4.17.15"],
       "fixedIn": ["4.17.21"]
+    },
+    {
+      "id": "SNYK-JS-AXIOS-6144788",
+      "issueData": {
+        "id": "SNYK-JS-AXIOS-6144788",
+        "title": "Server-Side Request Forgery (SSRF)",
+        "severity": "high",
+        "url": "https://snyk.io/vuln/SNYK-JS-AXIOS-6144788",
+        "description": "axios before 1.6.0 is vulnerable to Server-Side Request Forgery (SSRF). An attacker can bypass the proxy configuration and send requests to arbitrary hosts by setting a crafted hostname in the URL. Upgrading from 0.21.x to 1.6.x is a MAJOR version jump with BREAKING CHANGES: default headers API changed, transformRequest/transformResponse signatures changed, and CancelToken is removed in favour of AbortController.",
+        "identifiers": {
+          "CVE": ["CVE-2023-45857"],
+          "CWE": ["CWE-918"]
+        },
+        "functions": ["axios.get", "axios.post", "axios.request", "axios"]
+      },
+      "pkgName": "axios",
+      "pkgVersions": ["0.21.1"],
+      "fixedIn": ["1.6.0"]
+    },
+    {
+      "id": "SNYK-JS-MINIMIST-2429795",
+      "issueData": {
+        "id": "SNYK-JS-MINIMIST-2429795",
+        "title": "Prototype Pollution",
+        "severity": "critical",
+        "url": "https://snyk.io/vuln/SNYK-JS-MINIMIST-2429795",
+        "description": "minimist before 1.2.6 is vulnerable to Prototype Pollution. The library is used transitively by mkdirp (0.5.x) which is a dependency of this project. An attacker can inject properties onto Object.prototype via the argument parsing functions. This is a TRANSITIVE vulnerability — minimist is not directly imported but reached through mkdirp → minimist.",
+        "identifiers": {
+          "CVE": ["CVE-2021-44906"],
+          "CWE": ["CWE-1321"]
+        },
+        "functions": ["minimist"],
+        "transitiveChain": ["mkdirp", "minimist"]
+      },
+      "pkgName": "minimist",
+      "pkgVersions": ["1.2.5"],
+      "fixedIn": ["1.2.6"],
+      "parentPkg": "mkdirp",
+      "parentPkgVersion": "0.5.5",
+      "isTransitive": true
+    },
+    {
+      "id": "SNYK-JS-SEMVER-3247795",
+      "issueData": {
+        "id": "SNYK-JS-SEMVER-3247795",
+        "title": "Regular Expression Denial of Service (ReDoS)",
+        "severity": "low",
+        "url": "https://snyk.io/vuln/SNYK-JS-SEMVER-3247795",
+        "description": "semver before 7.5.2 is vulnerable to Regular Expression Denial of Service (ReDoS) via the semver.clean() function. An attacker can cause a denial of service by passing a specially crafted version string. This is a low-severity issue with no code changes required — a manifest-only bump is sufficient.",
+        "identifiers": {
+          "CVE": ["CVE-2022-25883"],
+          "CWE": ["CWE-1333"]
+        },
+        "functions": ["semver.clean", "semver.valid"]
+      },
+      "pkgName": "semver",
+      "pkgVersions": ["7.3.7"],
+      "fixedIn": ["7.5.2"]
     }
   ],
   "updatedIssues": [],

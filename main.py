@@ -56,11 +56,14 @@ def cmd_mock(alert_path: str, repo_path: str) -> None:
     logger.info("Repository path: %s", repo_abs)
 
     for vuln in vulns:
+        transitive_tag = " [TRANSITIVE]" if vuln.get("is_transitive") else ""
         print(f"\n{'═'*65}")
         print(
             f"  Processing: {vuln['package_name']} "
-            f"({vuln['severity'].upper()}) — {vuln['id']}"
+            f"({vuln['severity'].upper()}{transitive_tag}) — {vuln['id']}"
         )
+        if vuln.get("is_transitive"):
+            print(f"  Chain: {' → '.join(vuln.get('transitive_chain', []))}")
         print(f"{'═'*65}\n")
 
         initial_state: AgentState = {

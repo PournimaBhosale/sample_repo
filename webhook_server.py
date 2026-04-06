@@ -79,6 +79,7 @@ def _parse_snyk_payload(payload: dict) -> list[SnykVulnerability]:
         issue_data = issue.get("issueData", {})
         fixed_in: list[str] = issue.get("fixedIn") or []
         versions: list[str] = issue.get("pkgVersions") or []
+        transitive_chain: list[str] = issue_data.get("transitiveChain") or issue.get("transitiveChain", [])
         vuln = SnykVulnerability(
             id=issue.get("id") or issue_data.get("id", "unknown"),
             title=issue_data.get("title", "Unknown Vulnerability"),
@@ -89,6 +90,9 @@ def _parse_snyk_payload(payload: dict) -> list[SnykVulnerability]:
             description=issue_data.get("description", ""),
             cve_ids=issue_data.get("identifiers", {}).get("CVE", []),
             affected_functions=issue_data.get("functions", []),
+            is_transitive=bool(issue.get("isTransitive", False)),
+            transitive_chain=transitive_chain,
+            parent_package=issue.get("parentPkg", ""),
         )
         vulns.append(vuln)
     return vulns

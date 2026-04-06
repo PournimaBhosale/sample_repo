@@ -50,15 +50,23 @@ def _git(args: list[str], cwd: str) -> tuple[bool, str]:
 
 def _gh(args: list[str], cwd: str) -> tuple[bool, str]:
     env = os.environ.copy()
-    if GITHUB_TOKEN:
+    # Only override GH_TOKEN if explicitly set in .env — otherwise let gh CLI
+    # use the token stored via `gh auth login`
+    if GITHUB_TOKEN and GITHUB_TOKEN not in ("", "your_github_token_here"):
         env["GH_TOKEN"] = GITHUB_TOKEN
+    else:
+        # Remove any existing GH_TOKEN / GITHUB_TOKEN that might shadow gh auth
+        env.pop("GH_TOKEN", None)
+        env.pop("GITHUB_TOKEN", None)
     return _run(["gh"] + args, cwd, env=env)
 
 
 # ── Manifest patching ────────────────────────────────────────────────────────
 
 
-def _patch_package_json(repo_path: str, package_name: str, new_version: str) -> bool:
+def _patch_package_json(repo_path: str, package_name: str, new_version: str,
+                        is_transitive: bool = False,
+                        parent_package: str = "") -> bool:
     pkg_path = os.path.join(repo_path, "package.json")
     if not os.path.isfile(pkg_path):
         logger.warning("[PRCreator] package.json not found at %s", pkg_path)
@@ -67,10 +75,23 @@ def _patch_package_json(repo_path: str, package_name: str, new_version: str) -> 
         with open(pkg_path) as fh:
             pkg = json.load(fh)
         patched = False
-        for dep_key in ("dependencies", "devDependencies", "peerDependencies"):
-            if dep_key in pkg and package_name in pkg[dep_key]:
-                pkg[dep_key][package_name] = new_version
-                patched = True
+
+        if is_transitive:
+            # Add npm "overrides" to pin the transitive dependency version
+            if "overrides" not in pkg:
+                pkg["overrides"] = {}
+            pkg["overrides"][package_name] = new_version
+            patched = True
+            logger.info(
+                "[PRCreator] Added override: %s@%s (transitive via %s)",
+                package_name, new_version, parent_package,
+            )
+        else:
+            for dep_key in ("dependencies", "devDependencies", "peerDependencies"):
+                if dep_key in pkg and package_name in pkg[dep_key]:
+                    pkg[dep_key][package_name] = new_version
+                    patched = True
+
         if patched:
             with open(pkg_path, "w") as fh:
                 json.dump(pkg, fh, indent=2)
@@ -91,12 +112,25 @@ def _build_pr_body(state: AgentState) -> str:
     risk_assessment = state.get("risk_assessment", "")
     analysis = state.get("breaking_change_analysis", "")
 
+    is_transitive = vuln.get("is_transitive", False)
+    transitive_chain = vuln.get("transitive_chain", [])
+    breaking = state.get("breaking_changes", False)
+
+    transitive_badge = ""
+    if is_transitive:
+        chain_str = " → ".join(transitive_chain)
+        transitive_badge = f"\n**Transitive dependency:** Yes — `{chain_str}`  \n**Parent package:** `{vuln.get('parent_package', 'N/A')}`  "
+
+    breaking_badge = ""
+    if breaking:
+        breaking_badge = "\n**⚠️ BREAKING CHANGES DETECTED** — code modifications required  "
+
     body = f"""## 🔒 Security Fix: {vuln["title"]}
 
 **Package:** `{vuln["package_name"]}` `{vuln["affected_version"]}` → `{vuln["fixed_version"]}`  
 **Severity:** `{vuln["severity"].upper()}`  
 **CVEs:** {", ".join(vuln["cve_ids"]) or "N/A"}  
-**Snyk ID:** `{vuln["id"]}`  
+**Snyk ID:** `{vuln["id"]}`  {transitive_badge}{breaking_badge}
 
 ### Summary
 {vuln["description"]}
@@ -178,15 +212,27 @@ def pr_creator_node(state: AgentState) -> dict:
         _git(["add", "."], repo_path)
         _git(["commit", "-m", "chore: initial commit (snyk-bot setup)"], repo_path)
 
+    # ── Always start from main/default branch ─────────────────────────────
+    _git(["checkout", "main"], repo_path)
+    # Pull latest to avoid divergence (ignore errors if no remote)
+    _git(["pull", "--rebase", "origin", "main"], repo_path)
+
     # ── Create fix branch ────────────────────────────────────────────────────
     ok, _ = _git(["checkout", "-b", branch_name], repo_path)
     if not ok:
-        # Branch already exists — delete and recreate
+        # Branch already exists — delete and recreate from main
+        _git(["checkout", "main"], repo_path)
         _git(["branch", "-D", branch_name], repo_path)
         _git(["checkout", "-b", branch_name], repo_path)
 
     # ── Patch manifest ───────────────────────────────────────────────────────
-    patched = _patch_package_json(repo_path, vuln["package_name"], vuln["fixed_version"])
+    patched = _patch_package_json(
+        repo_path,
+        vuln["package_name"],
+        vuln["fixed_version"],
+        is_transitive=vuln.get("is_transitive", False),
+        parent_package=vuln.get("parent_package", ""),
+    )
     if patched:
         commit_msg = (
             f"fix: upgrade {vuln['package_name']} "
@@ -206,33 +252,52 @@ def pr_creator_node(state: AgentState) -> dict:
     pr_number = 0
 
     if not dry_run:
-        # Push branch to remote
-        _git(["push", "-u", "origin", branch_name], repo_path)
+        # ── Ensure remote 'origin' points to GITHUB_REPO ────────────────────
+        _, existing_remote = _git(["remote", "get-url", "origin"], repo_path)
+        expected_remote = f"https://github.com/{GITHUB_REPO}.git"
+        if GITHUB_REPO not in existing_remote:
+            _git(["remote", "remove", "origin"], repo_path)
+            _git(["remote", "add", "origin", expected_remote], repo_path)
+            logger.info("[PRCreator] Remote set to %s", expected_remote)
 
-        pr_title = (
-            f"fix: Upgrade {vuln['package_name']} to {vuln['fixed_version']} "
-            f"({vuln['severity'].upper()} — {', '.join(vuln['cve_ids']) or vuln['id']})"
+        # ── Delete stale remote branch if it exists, then push fresh ──────────
+        _git(["push", "origin", "--delete", branch_name], repo_path)  # ignore errors
+        push_ok, push_out = _git(
+            ["push", "-u", "origin", branch_name],
+            repo_path,
         )
-        body_file = f"/tmp/snyk_pr_body_{vuln['id'][:8]}.md"
-        with open(body_file, "w") as fh:
-            fh.write(pr_body)
-
-        ok, out = _gh(
-            [
-                "pr", "create",
-                "--draft",
-                "--title", pr_title,
-                "--body-file", body_file,
-                "--repo", GITHUB_REPO,
-            ],
-            cwd=repo_path,
-        )
-        if ok:
-            pr_url = out.strip().splitlines()[-1]
-            logger.info("[PRCreator] Draft PR created: %s", pr_url)
+        if not push_ok:
+            logger.error("[PRCreator] Push failed: %s", push_out)
+            pr_url = f"[ERROR] push failed: {push_out[:120]}"
         else:
-            logger.error("[PRCreator] PR creation failed: %s", out)
-            pr_url = f"[ERROR] {out[:120]}"
+            logger.info("[PRCreator] Pushed branch %s", branch_name)
+
+            pr_title = (
+                f"fix: Upgrade {vuln['package_name']} to {vuln['fixed_version']} "
+                f"({vuln['severity'].upper()} — {', '.join(vuln['cve_ids']) or vuln['id']})"
+            )
+            body_file = f"/tmp/snyk_pr_body_{vuln['id'][:8]}.md"
+            with open(body_file, "w") as fh:
+                fh.write(pr_body)
+
+            ok, out = _gh(
+                [
+                    "pr", "create",
+                    "--draft",
+                    "--title", pr_title,
+                    "--body-file", body_file,
+                    "--repo", GITHUB_REPO,
+                    "--head", branch_name,
+                    "--base", "main",
+                ],
+                cwd=repo_path,
+            )
+            if ok:
+                pr_url = out.strip().splitlines()[-1]
+                logger.info("[PRCreator] Draft PR created: %s", pr_url)
+            else:
+                logger.error("[PRCreator] PR creation failed: %s", out)
+                pr_url = f"[ERROR] {out[:120]}"
     else:
         pr_url = f"[DRY-RUN] branch={branch_name}"
         separator = "=" * 70

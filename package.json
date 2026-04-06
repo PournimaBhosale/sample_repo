@@ -16,5 +16,8 @@
   },
   "devDependencies": {
     "jest": "29.7.0"
+  },
+  "overrides": {
+    "minimist": "1.2.6"
   }
 }
